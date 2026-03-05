@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMC Calculator and Storage | v0.3.2</title>
+    <link rel="stylesheet" href="style.css?v=0.3.2">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="loader"></div>
+        <p>Sincronizando Dashboard v0.3.2...</p>
+    </div>
+
+    <div class="app">
+        <button class="icon-button open-toggle" id="btn-open">
+            <i data-lucide="chevron-right"></i>
+        </button>
+        
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-area">
+                    <i data-lucide="calculator" class="accent-icon"></i>
+                    <h2>IMC Storage</h2>
+                </div>
+                <button class="btn-colapse" id="btn-collapse">
+                    <i data-lucide="chevron-left"></i>
+                </button>
+            </div>
+            <div class="sidebar-content">
+                <div class="search-container-clean">
+                    <i data-lucide="search" size="18"></i>
+                    <input type="text" class="search-input" placeholder="Pesquisar paciente..." id="search-input">
+                </div>
+                <button class="btn-new" id="btn-new">
+                    <i data-lucide="user-plus" size="18"></i>
+                    Novo Cadastro
+                </button>
+                <div class="divider"></div>
+            </div>
+            <ul class="patient-list" id="patient-list"></ul>
+        </aside>
+
+        <main class="main">
+            <div class="container">
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-save" py-click="main_calculate">
+                        <i data-lucide="save" size="18"></i>
+                        Calcular e Armazenar
+                    </button>
+                </div>
+                
+                <section class="form-section">
+                    <div class="input-group">
+                        <label>Identificação do Paciente</label>
+                        <input type="text" id="p-name" placeholder="Nome completo">
+                    </div>
+                    <div class="grid-inputs">
+                        <div class="input-group">
+                            <label>Idade</label>
+                            <input type="number" id="p-age" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label>Peso (KG)</label>
+                            <input type="number" id="p-weight" step="0.1" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Altura (M)</label>
+                            <input type="number" id="p-height" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="result-container">
+                    <div class="result-header">
+                        <h3>Diagnóstico Individual</h3>
+                    </div>
+                    <div class="result-body">
+                        <div class="imc-display">
+                            <span class="imc-label">IMC</span>
+                            <h1 class="imc-value">--</h1>
+                        </div>
+                        <div class="category-display">
+                            <p class="imc-category">Aguardando dados</p>
+                            <div class="imc-bar">
+                                <div class="imc-pointer" id="imc-pointer"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- NOVA SEÇÃO DE GRÁFICO (ANÁLISE DE DADOS) -->
+                <section class="stats-container">
+                    <div class="result-header">
+                        <h3>Comparativo de Pesos (Médio vs Pacientes)</h3>
+                        <span id="avg-weight-badge" class="badge">Média: -- KG</span>
+                    </div>
+                    <div id="weight-chart" class="bar-chart">
+                        <!-- Barras geradas via Python/JS -->
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script type="py">
+from pyscript import document
+import json
+
+def calculate_imc(weight, height):
+    try:
+        w = float(weight)
+        h = float(height)
+        return round(w / (h * h), 2) if h > 0 else 0
+    except: return 0
+
+def get_status(imc):
+    if imc <= 0: return "Aguardando...", 0, "#737373"
+    if imc < 18.5: return "Abaixo do peso", 15, "#FFD700"
+    if imc < 25: return "Peso normal", 40, "#00FF00"
+    if imc < 30: return "Sobrepeso", 65, "#FFA500"
+    return "Obesidade", 90, "#FF0000"
+
+def main_calculate(event):
+    name = document.querySelector("#p-name").value
+    age = document.querySelector("#p-age").value
+    weight = document.querySelector("#p-weight").value
+    height = document.querySelector("#p-height").value
+    
+    if not name or not weight or not height: return
+
+    imc = calculate_imc(weight, height)
+    category, pos, color = get_status(imc)
+    
+    document.querySelector(".imc-value").innerText = imc
+    document.querySelector(".imc-category").innerText = category
+    document.querySelector(".imc-category").style.color = color
+    document.querySelector("#imc-pointer").style.left = f"{pos}%"
+    document.querySelector("#imc-pointer").style.backgroundColor = color
+    
+    from js import saveToStorage
+    saveToStorage(name, age, weight, height, imc, category)
+    update_stats()
+
+def update_stats():
+    from js import getEntries
+    entries = json.loads(getEntries())
+    
+    if not entries: return
+    
+    # Cálculo da Média de Peso (Foco Analista de Dados)
+    total_weight = sum(float(e['weight']) for e in entries)
+    avg = round(total_weight / len(entries), 1)
+    
+    document.querySelector("#avg-weight-badge").innerText = f"Média Geral: {avg} KG"
+    
+    # Geração das Barras de Comparação
+    chart_div = document.querySelector("#weight-chart")
+    chart_div.innerHTML = ""
+    
+    max_w = max(float(e['weight']) for e in entries) if entries else 100
+    
+    for e in entries:
+        height_pct = (float(e['weight']) / max_w) * 100
+        bar_html = f'''
+            <div class="chart-bar-wrapper">
+                <div class="chart-bar" style="height: {height_pct}%;">
+                    <span class="bar-value">{e['weight']}</span>
+                </div>
+                <span class="bar-label">{e['name'][:8]}</span>
+            </div>
+        '''
+        chart_div.innerHTML += bar_html
+
+document.querySelector("#loading-overlay").style.display = "none"
+update_stats()
+    </script>
+    <script src="script.js?v=0.3.2"></script>
+</body>
+</html>
